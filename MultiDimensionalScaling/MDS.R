@@ -1,0 +1,98 @@
+# Read data
+dec <- read.csv("2013-12 - Citi Bike trip data.csv", stringsAsFactors = FALSE)
+jan <- read.csv("2014-01 - Citi Bike trip data.csv", stringsAsFactors = FALSE)
+feb <- read.csv("2014-02 - Citi Bike trip data.csv", stringsAsFactors = FALSE)
+
+
+# Merge data (Adding rows)
+trip <- rbind(dec, jan, feb)
+rm(dec, jan, feb)
+
+# Bike station data
+bikeStn <- read.csv("citibike.csv", stringsAsFactor = FALSE)
+
+# Drop unnecessary columns from bikeStn
+names(bikeStn) # Get column names in bikeStn
+drop <- c("name", "streetAddress", "streetAddress.address2", "latitude", "longitude",
+          "loc", "entityTitle", "X.context", "X.type", "X.id")
+bikeStn <- bikeStn[, !(names(bikeStn) %in% drop)]
+
+# Change column names in BikeStn to merge start
+names(bikeStn) <- c("start.station.id", "start.totDocks", "start.hood", "start.zip")
+
+# Merge data for start station (many to one)
+trip <- merge(trip, bikeStn, by = c("start.station.id"))
+
+# Change column names in BikeStn to merge start
+names(bikeStn) <- c("end.station.id", "end.totDocks", "end.hood", "end.zip")
+
+# Merge data for end station (many to one)
+trip <- merge(trip, bikeStn, by = c("end.station.id"))
+rm(bikeStn, drop)
+
+# Plot - 1: NYC Citi Bike Route Popularity 
+
+hood.trips <- table(trip$start.hood, trip$end.hood)
+temp <- data.frame(hood.trips)
+names(temp) <- c("startHood", "endHood", "Popularity")
+temp <- temp[,c(2,1,3)]
+names(temp) <- c("startHood", "endHood", "Popularity")
+
+# ggplot2 library
+library(ggplot2)
+
+# Plot
+pdf("NYC_CitiBike_OD_Popularity.pdf", width = 11, height = 11)
+ggplot(temp, aes(startHood, endHood)) + geom_tile(aes(fill = Popularity), color = "black") + 
+        scale_fill_gradient(low = 'white', high = 'blue') + theme(axis.text.x = element_text(
+                angle = 90)) + xlab("Starting Neighborhood") + ylab("Ending Neighborhood") +
+        ggtitle("NYC Citi Bike Origin Destination Popularity")
+dev.off()
+
+
+
+## To populate a distance matrix in R
+startHood <- temp[,1]
+endHood <- temp[,2]
+Freq <- temp[,3]
+Index <- which(endHood == endHood[1])
+endHoodRange <- Index[2]-1
+startHoodRange <- length(Freq)/endHoodRange
+
+distMatrix <- matrix(0, nrow = endHoodRange, ncol = startHoodRange)
+for (i in 1:endHoodRange){
+        for (j in 1:startHoodRange){
+                distMatrix[i,j] <- Freq[(j-1)*endHoodRange+i]
+        }
+}
+
+mtxD <- data.frame(distMatrix)
+names(mtxD) <- c(levels(endHood))        
+row.names(mtxD) <- c(levels(startHood))
+
+# Finding Euclidean Distance (default)
+test <- dist(mtxD, upper = TRUE)
+test.mds <- cmdscale(test)
+
+round(test.mds, 1)
+
+
+
+plot(test.mds, type = 'n')
+text(test.mds, labels = names(mtxD))
+
+
+nyc <- as.data.frame(test.mds)
+colnames(nyc) <- c('x', 'y')
+nyc$name <- names(mtxD)
+
+pdf("NYC_CitiBike_Neighborhood_Similarity.pdf", width = 11, height = 11)
+ggplot(nyc, aes(x = x, y = y, legend = FALSE)) + 
+        theme_bw() +
+        geom_text(aes(color = topo.colors (nrow(nyc)), label = nyc$name, size = 16)) +
+        theme(legend.position = 'none',
+              axis.title.x = element_blank(),
+              axis.title.y = element_blank(),
+              axis.ticks = element_blank()) + ggtitle("NYC Citi Bike Neighborhood Similarity")
+dev.off()
+
